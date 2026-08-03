@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Шляпа? Лох? или Гусь?</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1a120b; }
+  #game { position: fixed; inset: 0; }
+  #ui {
+    position: fixed; inset: 0; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  #question {
+    margin-top: 4vh;
+    padding: 14px 40px;
+    font-size: clamp(22px, 4vw, 42px);
+    font-weight: bold;
+    color: #ffd97a;
+    background: linear-gradient(180deg, #3b2412, #241408);
+    border: 3px solid #c9962f;
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.7), inset 0 0 18px rgba(255,200,90,.15);
+    text-shadow: 0 2px 4px #000;
+    letter-spacing: 1px;
+  }
+  #target { color: #fff2c9; text-transform: uppercase; }
+  .chip {
+    position: fixed; top: 4vh;
+    padding: 10px 22px;
+    font-size: clamp(14px, 2vw, 22px);
+    font-weight: bold;
+    color: #ffd97a;
+    background: linear-gradient(180deg, #3b2412, #241408);
+    border: 2px solid #c9962f;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.6);
+    text-shadow: 0 2px 4px #000;
+  }
+  #attempts { left: 3vw; }
+  #score { right: 3vw; }
+  #streak {
+    position: fixed; top: calc(4vh + 58px); right: 3vw;
+    padding: 6px 16px;
+    font-size: clamp(13px, 1.7vw, 19px);
+    font-weight: bold;
+    color: #ffb84d;
+    background: linear-gradient(180deg, #4a2500, #2a1400);
+    border: 2px solid #ff9d2e;
+    border-radius: 10px;
+    text-shadow: 0 0 10px #ff7b00;
+    box-shadow: 0 0 18px rgba(255,140,0,.35);
+    opacity: 0; transform: scale(.5);
+    transition: opacity .3s ease, transform .3s cubic-bezier(.2, 1.9, .4, 1);
+  }
+  #streak.shown { opacity: 1; transform: scale(1); }
+  #gainText {
+    position: fixed; left: 0; right: 0; top: 68vh; text-align: center;
+    pointer-events: none;
+    font-family: Georgia, serif; font-weight: bold;
+    font-size: clamp(20px, 3.2vw, 36px);
+    color: #9dff8a; text-shadow: 0 0 18px #2fbf3a, 0 2px 6px #000;
+    opacity: 0; transform: translateY(20px);
+    transition: opacity .4s ease .5s, transform .5s ease .5s;
+  }
+  #gainText.shown { opacity: 1; transform: translateY(0); }
+  #overlay {
+    position: fixed; inset: 0; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+  }
+  #shade {
+    position: absolute; inset: 0; background: #000;
+    opacity: 0; transition: opacity 1.2s ease;
+  }
+  #overlay.lose.shown #shade { opacity: .88; }
+  .plaque {
+    position: fixed; left: 50%; top: 44%;
+    width: min(64vw, 760px);
+    opacity: 0; transform: translate(-50%, -50%) scale(.25) rotate(-4deg);
+    pointer-events: none;
+  }
+  .plaque img {
+    display: block; width: 100%;
+    border-radius: 4.5vw;
+    box-shadow: 0 20px 70px rgba(0,0,0,.85), 0 0 60px rgba(255,190,80,.25);
+  }
+  #verdict {
+    transition: opacity .5s ease .7s, transform .7s cubic-bezier(.2, 1.9, .4, 1) .7s;
+  }
+  #verdict img { box-shadow: 0 20px 70px #000, 0 0 60px rgba(255,60,60,.3); }
+  #overlay.lose.shown #verdict { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  #again {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 84vh;
+    pointer-events: none;
+    font-family: Georgia, serif; font-size: clamp(16px, 2.5vw, 26px); font-weight: bold;
+    color: #ffd97a; background: linear-gradient(180deg, #4a2e15, #2a180a);
+    border: 2px solid #c9962f; border-radius: 10px;
+    padding: 12px 34px; cursor: pointer;
+    opacity: 0; transition: opacity .5s ease .8s;
+    text-shadow: 0 1px 3px #000;
+  }
+  #again:hover { background: linear-gradient(180deg, #5c3a1c, #34200d); }
+  #overlay.shown #again { opacity: 1; pointer-events: auto; }
+  #winText {
+    transition: opacity .4s ease, transform .6s cubic-bezier(.2, 1.9, .4, 1);
+  }
+  #winText.shown { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  #startScreen {
+    position: fixed; inset: 0; z-index: 10;
+    background: #120d08;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity .8s ease;
+  }
+  #startScreen.hidden { opacity: 0; pointer-events: none; }
+  #introWrap { position: relative; }
+  #introWrap img { display: block; max-width: 100vw; max-height: 100vh; }
+  #introBtns {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 74%;
+    display: flex; align-items: center; gap: 22px;
+  }
+  #startBtn {
+    font-family: Georgia, serif; font-size: clamp(22px, 3.5vw, 38px); font-weight: bold;
+    color: #ffe9b0; background: linear-gradient(180deg, #5c3a1c, #2a180a);
+    border: 3px solid #e0b04a; border-radius: 14px;
+    padding: 16px 64px; cursor: pointer;
+    box-shadow: 0 8px 30px rgba(0,0,0,.8), inset 0 0 20px rgba(255,200,90,.2);
+    text-shadow: 0 2px 4px #000;
+    letter-spacing: 2px;
+  }
+  #startBtn:hover {
+    background: linear-gradient(180deg, #71481f, #34200d);
+    box-shadow: 0 8px 34px rgba(0,0,0,.8), 0 0 26px rgba(255,190,80,.45), inset 0 0 20px rgba(255,200,90,.3);
+  }
+  #finalScreen {
+    position: fixed; inset: 0; z-index: 9;
+    background: rgba(0,0,0,.9);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .6s ease;
+    font-family: Georgia, serif;
+  }
+  #finalScreen.shown { opacity: 1; pointer-events: auto; }
+  #finalPanel {
+    text-align: center;
+    padding: 5vh 7vw;
+    background: linear-gradient(180deg, #3b2412, #1c0f06);
+    border: 4px solid #c9962f;
+    border-radius: 22px;
+    box-shadow: 0 12px 60px #000, inset 0 0 30px rgba(255,200,90,.12);
+  }
+  #finalPanel h1 {
+    margin: 0 0 2vh;
+    font-size: clamp(28px, 5vw, 54px);
+    color: #ffd97a; text-shadow: 0 2px 6px #000;
+  }
+  #finalScore {
+    font-size: clamp(40px, 8vw, 96px);
+    font-weight: bold;
+    color: #fff2c9; text-shadow: 0 0 30px #ff9d00, 0 4px 10px #000;
+  }
+  #finalNote {
+    margin-top: 1vh;
+    font-size: clamp(16px, 2.2vw, 24px);
+    color: #d9b877;
+  }
+  #restart {
+    margin-top: 4vh;
+    font-family: Georgia, serif; font-size: clamp(18px, 2.8vw, 30px); font-weight: bold;
+    color: #ffe9b0; background: linear-gradient(180deg, #5c3a1c, #2a180a);
+    border: 3px solid #e0b04a; border-radius: 12px;
+    padding: 14px 50px; cursor: pointer;
+    text-shadow: 0 2px 4px #000;
+  }
+  #restart:hover { background: linear-gradient(180deg, #71481f, #34200d); }
+  .goldBtn {
+    font-family: Georgia, serif; font-weight: bold;
+    color: #ffe9b0; background: linear-gradient(180deg, #5c3a1c, #2a180a);
+    border: 2px solid #e0b04a; border-radius: 10px;
+    cursor: pointer; text-shadow: 0 1px 3px #000;
+  }
+  .goldBtn:hover { background: linear-gradient(180deg, #71481f, #34200d); }
+  .googleBtn {
+    display: flex; align-items: center; gap: .6em;
+    font-size: clamp(15px, 2vw, 24px);
+    padding: 12px 26px;
+    border-width: 3px; border-radius: 12px;
+  }
+  .googleBtn svg { width: 1.25em; height: 1.25em; }
+  #lbBtn {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 87.5%;
+    font-size: clamp(14px, 2vw, 22px);
+    padding: 8px 30px;
+  }
+  #lbBtn2 {
+    margin-top: 1.6vh; margin-left: 1vw;
+    font-size: clamp(14px, 2vw, 22px);
+    padding: 10px 30px;
+  }
+  #lbScreen {
+    position: fixed; inset: 0; z-index: 11;
+    background: rgba(0,0,0,.88);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .4s ease;
+  }
+  #lbScreen.shown { opacity: 1; pointer-events: auto; }
+  #lbWrap { position: relative; }
+  #lbBoard { position: relative; }
+  #lbBoard > img { display: block; max-width: 96vw; max-height: 96vh; }
+  .lbRow {
+    position: absolute; left: 27%; width: 47.5%; height: 6.6%;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: Georgia, serif; font-weight: bold;
+    color: #3a2408;
+  }
+  .lbRow .n {
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    max-width: 72%;
+  }
+  .lbRow .s { color: #5a3808; }
+  #lbAuth {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 88%;
+    display: flex; align-items: center; gap: 14px;
+  }
+  #lbAuth.signed #gsiBtn { display: none; }
+  #lbHint {
+    font-family: Georgia, serif; font-size: clamp(12px, 1.6vw, 18px);
+    color: #ffd97a; text-shadow: 0 2px 4px #000;
+  }
+  #lbClose {
+    position: absolute; top: 1.5%; right: 1.5%;
+    font-size: clamp(18px, 2.5vw, 30px);
+    padding: 4px 14px;
+  }
+  /* узкие/портретные экраны: кнопки столбиком под картинкой, а не поверх неё */
+  @media (max-aspect-ratio: 6/5), (max-width: 700px) {
+    #introWrap { display: flex; flex-direction: column; align-items: center; }
+    #introBtns {
+      position: static; transform: none;
+      flex-direction: column; gap: 14px;
+      margin-top: 18px;
+    }
+    #startBtn { font-size: 26px; padding: 14px 60px; }
+    .googleBtn { font-size: 17px; }
+    #lbBtn { position: static; transform: none; margin-top: 14px; font-size: 17px; }
+    #lbWrap { display: flex; flex-direction: column; align-items: center; }
+    #lbAuth { position: static; transform: none; margin-top: 16px; flex-direction: column; }
+    #lbClose { top: 8px; right: 8px; position: fixed; }
+    /* HUD: чипы в верхнем ряду, вопрос строкой ниже */
+    .chip { top: 10px; font-size: 14px; padding: 8px 14px; }
+    #attempts { left: 10px; }
+    #score { right: 10px; }
+    #question { margin-top: 58px; font-size: 20px; padding: 10px 22px; }
+    #streak { top: 106px; right: 10px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+  <div id="question">Где <span id="target">?</span>?</div>
+  <div id="attempts" class="chip">Попытка 1/10</div>
+  <div id="score" class="chip">Очки: 0</div>
+  <div id="streak">серия ×2</div>
+</div>
+<div id="gainText"></div>
+<div id="finalScreen">
+  <div id="finalPanel">
+    <h1>Игра окончена!</h1>
+    <div id="finalScore">0</div>
+    <div id="finalNote"></div>
+    <button id="restart">Играть заново</button><button id="lbBtn2" class="goldBtn">Рейтинг</button>
+  </div>
+</div>
+<div id="lbScreen">
+  <div id="lbWrap">
+    <div id="lbBoard">
+      <img src="img/8.png" alt="Рейтинг">
+      <div id="lbRows"></div>
+    </div>
+    <div id="lbAuth">
+      <button id="gsiBtn" class="goldBtn googleBtn">
+        <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Войти через Google
+      </button>
+      <div id="lbHint"></div>
+    </div>
+    <button id="lbClose" class="goldBtn">✕</button>
+  </div>
+</div>
+<div id="winText" class="plaque"><img src="img/7.png" alt="ТЫ МОЛОДЕЦ!"></div>
+<div id="overlay">
+  <div id="shade"></div>
+  <div id="verdict" class="plaque"><img src="img/6.png" alt="ты ЛЛЛЛОХХ!"></div>
+  <button id="again">Ещё раз</button>
+</div>
+<div id="startScreen">
+  <div id="introWrap">
+    <img src="img/0.png" alt="Шляпа? Лох? или Гусь?">
+    <div id="introBtns">
+      <button id="startBtn">Начать</button>
+      <button id="gsiBtnIntro" class="goldBtn googleBtn">
+        <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Войти через Google
+      </button>
+    </div>
+    <button id="lbBtn" class="goldBtn">Рейтинг</button>
+  </div>
+</div>
+<script src="./config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script type="importmap">
+  { "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
