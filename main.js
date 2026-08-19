@@ -133,7 +133,8 @@ for (let i = 0; i < 3; i++) {
 
   const glow = new THREE.Mesh(
     new THREE.PlaneGeometry(CARD_W * 1.7, CARD_H * 1.5),
-    new THREE.MeshBasicMaterial({ map: glowTexture, transparent: true, opacity: 0, depthWrite: false })
+    // depthTest: false — иначе стол обрезает нижнюю часть ореола
+    new THREE.MeshBasicMaterial({ map: glowTexture, transparent: true, opacity: 0, depthWrite: false, depthTest: false })
   );
   glow.position.set(x, BASE_Y, -.2);
   scene.add(glow, group);
