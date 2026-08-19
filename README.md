@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/gremlintomsk/hat-fool-goose/actions/workflows/ci.yml/badge.svg)](https://github.com/gremlintomsk/hat-fool-goose/actions/workflows/ci.yml)
 
+**Играть онлайн: https://shlyapalohiligus.duckdns.org/**
+
 ![Шляпа? Лох? или Гусь?](img/intro.png)
 
 Мини-игра на Three.js в стиле Hearthstone: три карты рубашкой вверх,
