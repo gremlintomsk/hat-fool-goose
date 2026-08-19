@@ -248,10 +248,68 @@
     border-width: 3px; border-radius: 12px;
   }
   .googleBtn svg { width: 1.25em; height: 1.25em; }
-  #lbBtn {
+  #introRow2 {
     position: absolute; left: 50%; transform: translateX(-50%); top: 87.5%;
+    display: flex; gap: 14px;
+  }
+  #lbBtn, #duelBtn {
     font-size: clamp(14px, 2vw, 22px);
     padding: 8px 30px;
+  }
+  #modeHint {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 66.5%;
+    width: max-content; max-width: 92vw; text-align: center;
+    font-family: Georgia, serif; font-weight: bold;
+    font-size: clamp(14px, 2vw, 22px);
+    color: #ffe9b0; text-shadow: 0 2px 6px #000, 0 0 14px rgba(0,0,0,.9);
+  }
+  #modeHint:empty { display: none; }
+  .dlgWrap {
+    position: fixed; inset: 0; z-index: 12;
+    background: rgba(0,0,0,.78);
+    display: none; align-items: center; justify-content: center;
+    font-family: Georgia, serif;
+  }
+  .dlgWrap.shown { display: flex; }
+  .dlgPanel {
+    text-align: center;
+    padding: 4vh 5vw;
+    background: linear-gradient(180deg, #3b2412, #1c0f06);
+    border: 3px solid #c9962f; border-radius: 18px;
+    box-shadow: 0 12px 60px #000, inset 0 0 24px rgba(255,200,90,.1);
+    color: #ffd97a;
+  }
+  .dlgTitle {
+    font-family: 'Yeseva One', Georgia, serif;
+    font-size: clamp(20px, 3vw, 30px);
+    margin-bottom: 2.4vh;
+    text-shadow: 0 2px 4px #000;
+  }
+  #nameInput {
+    font-family: Georgia, serif; font-size: clamp(16px, 2.2vw, 22px);
+    padding: 10px 14px; text-align: center;
+    border: 2px solid #c9962f; border-radius: 10px;
+    background: #241408; color: #ffe9b0; outline: none;
+    width: min(70vw, 320px);
+  }
+  #nameInput:focus { border-color: #ffd97a; box-shadow: 0 0 12px rgba(255,200,90,.35); }
+  .dlgBtns { margin-top: 2.6vh; display: flex; gap: 14px; justify-content: center; }
+  .dlgBtns .goldBtn { font-size: clamp(15px, 2vw, 20px); padding: 10px 26px; }
+  #shareLink {
+    user-select: all; -webkit-user-select: all;
+    font-size: clamp(13px, 1.8vw, 18px);
+    color: #fff2c9; background: #241408;
+    border: 2px dashed #c9962f; border-radius: 10px;
+    padding: 10px 14px; max-width: 78vw; overflow-wrap: anywhere;
+  }
+  #shareStatus {
+    margin-top: 1.8vh; min-height: 1.2em;
+    font-size: clamp(13px, 1.8vw, 18px); color: #d9b877;
+  }
+  #challengeBtn {
+    margin-top: 2vh;
+    font-size: clamp(15px, 2vw, 22px);
+    padding: 10px 28px;
   }
   #lbBtn2 {
     margin-top: 1.6vh; margin-left: 1vw;
@@ -303,7 +361,9 @@
     }
     #startBtn { font-size: 26px; padding: 14px 60px; }
     .googleBtn { font-size: 17px; }
-    #lbBtn { position: static; transform: none; margin-top: 14px; font-size: 17px; }
+    #introRow2 { position: static; transform: none; margin-top: 14px; }
+    #lbBtn, #duelBtn { font-size: 17px; }
+    #modeHint { position: static; transform: none; margin-top: 12px; }
     #lbWrap { display: flex; flex-direction: column; align-items: center; }
     #lbAuth { position: static; transform: none; margin-top: 16px; flex-direction: column; }
     #lbClose { top: 8px; right: 8px; position: fixed; }
@@ -329,9 +389,10 @@
 <div id="gainText"></div>
 <div id="finalScreen">
   <div id="finalPanel">
-    <h1>Игра окончена!</h1>
+    <h1 id="finalTitle">Игра окончена!</h1>
     <div id="finalScore">0</div>
     <div id="finalNote"></div>
+    <div><button id="challengeBtn" class="goldBtn" hidden>Бросить вызов другу</button></div>
     <button id="restart">Играть заново</button><button id="lbBtn2" class="goldBtn">Рейтинг</button>
   </div>
 </div>
@@ -360,6 +421,7 @@
 <div id="startScreen">
   <div id="introWrap">
     <img src="img/0.png" alt="Шляпа? Лох? или Гусь?">
+    <div id="modeHint"></div>
     <div id="introBtns">
       <button id="startBtn">Начать</button>
       <button id="gsiBtnIntro" class="goldBtn googleBtn">
@@ -367,9 +429,33 @@
         Войти через Google
       </button>
     </div>
-    <button id="lbBtn" class="goldBtn">Рейтинг</button>
+    <div id="introRow2">
+      <button id="duelBtn" class="goldBtn">Дуэль</button>
+      <button id="lbBtn" class="goldBtn">Рейтинг</button>
+    </div>
   </div>
-  <div id="version">v1.1.1</div>
+  <div id="version">v1.2.0</div>
+</div>
+<div id="nameDlg" class="dlgWrap">
+  <div class="dlgPanel">
+    <div class="dlgTitle" id="nameDlgTitle">Как тебя зовут?</div>
+    <input id="nameInput" maxlength="20" autocomplete="off">
+    <div class="dlgBtns">
+      <button id="nameOk" class="goldBtn">Вперёд</button>
+      <button id="nameCancel" class="goldBtn">Отмена</button>
+    </div>
+  </div>
+</div>
+<div id="shareDlg" class="dlgWrap">
+  <div class="dlgPanel">
+    <div class="dlgTitle" id="shareTitle">Ссылка для соперника</div>
+    <div id="shareLink"></div>
+    <div class="dlgBtns">
+      <button id="copyBtn" class="goldBtn">Скопировать</button>
+      <button id="shareClose" class="goldBtn">Закрыть</button>
+    </div>
+    <div id="shareStatus"></div>
+  </div>
 </div>
 <script src="./config.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>

@@ -249,6 +249,24 @@ const finalNoteEl = document.getElementById('finalNote');
 const MAX_ATTEMPTS = 10;
 const BASE_POINTS = 100;
 
+// ---------- сеть: серверные партии, вызовы, дуэли ----------
+// всё — короткие HTTP-запросы под /api/ (см. api.py), реалтайм не нужен
+
+async function api(path, body) {
+  const r = await fetch(path, body !== undefined ? {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  } : undefined);
+  if (!r.ok) throw new Error('api ' + r.status);
+  return r.json();
+}
+
+let srvGame = null;       // серверная партия {id, nextTarget, done}; null — оффлайн-режим
+let challengeCtx = null;  // принятый вызов {id, fromName, fromScore}
+let myChallengeId = null; // созданный мной вызов
+let myName = '';
+
 let target = null;
 let locked = false;
 let hovered = -1;
@@ -279,16 +297,24 @@ function newRound() {
   gainTextEl.classList.remove('shown');
   updateHud();
   locked = true;
-  const order = shuffle([...CHARACTERS]);
-  target = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+  if (srvGame) {
+    // раскладку знает только сервер — текстуры назначаются при вскрытии
+    target = CHARACTERS.find((c) => c.id === srvGame.nextTarget);
+    cards.forEach((card) => { card.character = null; });
+  } else {
+    const order = shuffle([...CHARACTERS]);
+    target = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+    cards.forEach((card, i) => {
+      card.character = order[i];
+      card.front.material.map = frontTextures.get(order[i].id);
+      card.front.material.needsUpdate = true;
+    });
+  }
   questionTarget.textContent = target.name;
   questionEl.classList.remove('pop');
   void questionEl.offsetWidth; // перезапуск анимации
   questionEl.classList.add('pop');
-  cards.forEach((card, i) => {
-    card.character = order[i];
-    card.front.material.map = frontTextures.get(order[i].id);
-    card.front.material.needsUpdate = true;
+  cards.forEach((card) => {
     if (card.flipped) tween(card.group.rotation, 'y', Math.PI, .5);
     card.flipped = false;
     tween(card.group.position, 'y', BASE_Y, .5);
@@ -312,6 +338,8 @@ function pick(index) {
   if (!started || locked) return;
   locked = true;
   setHover(-1);
+  if (duel) { duelPick(index); return; }
+  if (srvGame) { serverPick(index); return; }
   attempt++;
   const card = cards[index];
   const win = card.character.id === target.id;
@@ -322,11 +350,34 @@ function pick(index) {
   });
 }
 
-function finish(win) {
+async function serverPick(index) {
+  let r;
+  try {
+    r = await api(`/api/game/${srvGame.id}/pick`, { pos: index });
+  } catch (e) {
+    locked = false; // сервер моргнул — даём кликнуть ещё раз
+    return;
+  }
+  attempt = r.attempt; score = r.score; streak = r.streak;
+  srvGame.nextTarget = r.next_target; srvGame.done = r.done;
+  cards.forEach((c, i) => {
+    c.character = CHARACTERS.find((ch) => ch.id === r.layout[i]);
+    c.front.material.map = frontTextures.get(r.layout[i]);
+    c.front.material.needsUpdate = true;
+  });
+  flipCard(cards[index], 0, () => {
+    cards.forEach((c, i) => { if (i !== index) flipCard(c, 250 + Math.abs(i - index) * 120); });
+    setTimeout(() => finish(r.win, r.gain), 900);
+  });
+}
+
+function finish(win, gain) {
   if (win) {
-    streak++;
-    const gain = BASE_POINTS * streak;
-    score += gain;
+    if (gain === undefined) { // оффлайн-режим считает очки сам
+      streak++;
+      gain = BASE_POINTS * streak;
+      score += gain;
+    }
     gainTextEl.textContent = streak >= 2 ? `+${gain} очков (серия ×${streak})` : `+${gain} очков`;
     gainTextEl.classList.add('shown');
     scoreEl.classList.remove('bump');
@@ -355,7 +406,20 @@ function showFinal() {
     if (k < 1) requestAnimationFrame(countUp);
   })(t0);
   const maxScore = BASE_POINTS * (MAX_ATTEMPTS * (MAX_ATTEMPTS + 1)) / 2;
-  finalNoteEl.textContent = score >= maxScore / 2 ? 'Ты не лох, ты молодец!' : score > 0 ? 'Могло быть и хуже' : 'Ты АБСОЛЮТНЫЙ ЛЛЛЛОХХ!';
+  const finalTitle = document.getElementById('finalTitle');
+  if (challengeCtx) {
+    const beat = score > challengeCtx.fromScore;
+    finalTitle.textContent = beat ? 'Победа!' : score === challengeCtx.fromScore ? 'Ничья!' : 'Поражение…';
+    finalNoteEl.textContent = beat
+      ? `${challengeCtx.fromName} (${challengeCtx.fromScore}) повержен!`
+      : score === challengeCtx.fromScore
+        ? `Вы с ${challengeCtx.fromName} набрали поровну`
+        : `${challengeCtx.fromName} (${challengeCtx.fromScore}) оказался хитрее. Лох — ты.`;
+  } else {
+    finalTitle.textContent = 'Игра окончена!';
+    finalNoteEl.textContent = score >= maxScore / 2 ? 'Ты не лох, ты молодец!' : score > 0 ? 'Могло быть и хуже' : 'Ты АБСОЛЮТНЫЙ ЛЛЛЛОХХ!';
+  }
+  challengeBtn.hidden = !(srvGame && srvGame.done && score > 0 && !challengeCtx);
   finalScreen.classList.add('shown');
   if (score > 0) submitScore(score);
 }
@@ -365,10 +429,24 @@ againBtn.addEventListener('click', () => {
   else newRound();
 });
 
-document.getElementById('restart').addEventListener('click', () => {
+async function startRun() {
   attempt = 0; score = 0; streak = 0;
   finalScreen.classList.remove('shown');
+  challengeBtn.hidden = true;
+  myChallengeId = null;
+  srvGame = null;
+  try {
+    const q = challengeCtx
+      ? await api(`/api/challenge/${challengeCtx.id}/accept`, { name: myName || 'аноним' })
+      : await api('/api/game', {});
+    srvGame = { id: q.game, nextTarget: q.target, done: false };
+  } catch (e) { /* сервер недоступен — играем локально */ }
   newRound();
+}
+
+document.getElementById('restart').addEventListener('click', () => {
+  if (duel) { location.href = location.pathname; return; }
+  startRun();
 });
 
 // ---------- рейтинг и вход через Google ----------
@@ -430,7 +508,10 @@ function submitScore(s) {
       await fetch('/api/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: googleToken, score: s }),
+        // серверная партия отправляется по id — сервер сам знает счёт
+        body: JSON.stringify(srvGame && srvGame.done
+          ? { token: googleToken, game: srvGame.id }
+          : { token: googleToken, score: s }),
       });
       pendingScore = 0;
     } catch (e) { /* рейтинг недоступен — не мешаем игре */ }
@@ -486,12 +567,278 @@ window.addEventListener('resize', () => {
 
 initGoogle();
 
-const startScreen = document.getElementById('startScreen');
-document.getElementById('startBtn').addEventListener('click', (e) => {
+// ---------- диалоги (имя, ссылка) ----------
+
+const modeHint = document.getElementById('modeHint');
+const challengeBtn = document.getElementById('challengeBtn');
+const nameDlg = document.getElementById('nameDlg');
+const nameInput = document.getElementById('nameInput');
+const nameOk = document.getElementById('nameOk');
+const nameCancel = document.getElementById('nameCancel');
+const shareDlg = document.getElementById('shareDlg');
+const shareLink = document.getElementById('shareLink');
+const shareStatus = document.getElementById('shareStatus');
+
+function askName(title) {
+  return new Promise((resolve) => {
+    document.getElementById('nameDlgTitle').textContent = title || 'Как тебя зовут?';
+    nameInput.value = myName;
+    nameDlg.classList.add('shown');
+    nameInput.focus();
+    const ok = () => { close(); resolve(nameInput.value.trim().slice(0, 20) || null); };
+    const cancel = () => { close(); resolve(null); };
+    const onKey = (ev) => {
+      if (ev.key === 'Enter') ok();
+      if (ev.key === 'Escape') cancel();
+    };
+    function close() {
+      nameDlg.classList.remove('shown');
+      nameOk.removeEventListener('click', ok);
+      nameCancel.removeEventListener('click', cancel);
+      nameInput.removeEventListener('keydown', onKey);
+    }
+    nameOk.addEventListener('click', ok);
+    nameCancel.addEventListener('click', cancel);
+    nameInput.addEventListener('keydown', onKey);
+  });
+}
+
+function showShare(url, status) {
+  shareLink.textContent = url;
+  shareStatus.textContent = status || '';
+  shareDlg.classList.add('shown');
+}
+
+document.getElementById('copyBtn').addEventListener('click', async (e) => {
   e.stopPropagation();
+  try {
+    await navigator.clipboard.writeText(shareLink.textContent);
+    shareStatus.textContent = 'Скопировано!';
+  } catch (err) {
+    shareStatus.textContent = 'Выдели ссылку и скопируй вручную';
+  }
+});
+document.getElementById('shareClose').addEventListener('click', (e) => {
+  e.stopPropagation();
+  shareDlg.classList.remove('shown');
+});
+
+challengeBtn.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!srvGame || !srvGame.done) return;
+  const url = (id) => `${location.origin}${location.pathname}?c=${id}`;
+  if (myChallengeId) { showShare(url(myChallengeId), 'Скинь другу — он сыграет ту же раздачу'); return; }
+  const n = await askName('Твоё имя для вызова');
+  if (!n) return;
+  myName = n;
+  try {
+    const r = await api('/api/challenge', { game: srvGame.id, name: n });
+    myChallengeId = r.id;
+    showShare(url(r.id), 'Скинь другу — он сыграет ту же раздачу');
+  } catch (err) { /* сервер недоступен */ }
+});
+
+// ---------- дуэль «Напёрсточник» ----------
+// short-polling каждые 1.5с; фазы: hide → guess → reveal → … → done
+
+let duel = null; // { id, key, me: 1|2 }
+let duelPoll = null;
+let duelLast = null; // последнее состояние с сервера
+let pendingDuelId = null;
+
+async function duelCreate() {
+  const n = await askName('Твоё имя для дуэли');
+  if (!n) return;
+  myName = n;
+  let r;
+  try {
+    r = await api('/api/duel', { name: n });
+  } catch (e) { modeHint.textContent = 'Сервер недоступен — дуэль не создать'; return; }
+  duel = { id: r.id, key: r.key, me: 1 };
+  showShare(`${location.origin}${location.pathname}?d=${r.id}`, 'Ждём соперника…');
+  startDuelPoll();
+}
+
+async function duelJoin(id) {
+  const n = await askName('Твоё имя для дуэли');
+  if (!n) return;
+  myName = n;
+  let r;
+  try {
+    r = await api(`/api/duel/${id}/join`, { name: n });
+  } catch (e) { modeHint.textContent = 'Дуэль не найдена или уже началась'; return; }
+  duel = { id, key: r.key, me: 2 };
+  startDuelPoll();
+}
+
+function startDuelPoll() {
+  if (duelPoll) clearInterval(duelPoll);
+  duelPoll = setInterval(duelTick, 1500);
+  duelTick();
+}
+
+async function duelTick() {
+  if (!duel) return;
+  let s;
+  try {
+    s = await api(`/api/duel/${duel.id}/state?key=${encodeURIComponent(duel.key)}`);
+  } catch (e) { return; /* сеть моргнула — следующий тик */ }
+  applyDuel(s);
+}
+
+function setQuestion(text) {
+  questionEl.textContent = text;
+}
+
+function resetCardsForRound() {
+  gainTextEl.classList.remove('shown');
+  setHover(-1);
+  cards.forEach((card) => {
+    card.character = null;
+    tween(card.glow.material, 'opacity', 0, .3);
+    if (card.flipped) tween(card.group.rotation, 'y', Math.PI, .5);
+    card.flipped = false;
+    tween(card.group.position, 'y', BASE_Y, .5);
+    tween(card.group.scale, 'x', 1, .3);
+    tween(card.group.scale, 'y', 1, .3);
+  });
+}
+
+function applyDuel(s) {
+  const prev = duelLast;
+  duelLast = s;
+  if (s.phase === 'wait') return;
+  if (!started) {
+    started = true;
+    shareDlg.classList.remove('shown');
+    startScreen.classList.add('hidden');
+  }
+  const me = duel.me, opp = 3 - me;
+  attemptsEl.textContent = `Ты: ${s.scores[me - 1]}`;
+  scoreEl.textContent = `${s.names[opp - 1]}: ${s.scores[opp - 1]}`;
+  streak = s.streaks[me - 1];
+  streakEl.textContent = `серия ×${streak}`;
+  streakEl.classList.toggle('shown', streak >= 2);
+  const tgt = CHARACTERS.find((c) => c.id === s.target);
+  const iHide = s.hider === me;
+  if ((!prev || prev.round !== s.round) && (s.phase === 'hide' || s.phase === 'guess')) {
+    resetCardsForRound();
+  }
+  if (s.phase === 'hide') {
+    setQuestion(iHide
+      ? `Раунд ${s.round}: спрячь — ${tgt.name}! (${s.left}с)`
+      : `${s.names[opp - 1]} прячет — ${tgt.name}…`);
+  } else if (s.phase === 'guess') {
+    setQuestion(iHide
+      ? `${s.names[opp - 1]} ищет — ${tgt.name}…`
+      : `Раунд ${s.round}: где ${tgt.name}? (${s.left}с)`);
+  }
+  locked = !((s.phase === 'hide' && iHide) || (s.phase === 'guess' && !iHide));
+  if (s.phase === 'reveal' && (!prev || prev.phase !== 'reveal' || prev.round !== s.round)) {
+    revealDuel(s);
+  }
+  if (s.phase === 'done' && (!prev || prev.phase !== 'done')) duelFinal(s);
+}
+
+async function duelPick(index) {
+  const s = duelLast;
+  if (!s) { locked = false; return; }
+  const action = s.phase === 'hide' ? 'hide' : 'guess';
+  if (action === 'hide') {
+    // прячущему — подсветить выбранную карту, сопернику её не видно
+    tween(cards[index].glow.material, 'opacity', .95, .25);
+  }
+  try {
+    const r = await api(`/api/duel/${duel.id}/${action}`, { key: duel.key, pos: index });
+    applyDuel(r);
+  } catch (e) { locked = false; }
+}
+
+function revealDuel(s) {
+  const r = s.result;
+  locked = true;
+  setHover(-1);
+  cards.forEach((c, i) => {
+    c.front.material.map = frontTextures.get(r.layout[i]);
+    c.front.material.needsUpdate = true;
+    tween(c.glow.material, 'opacity', 0, .3);
+  });
+  const first = r.guess;
+  flipCard(cards[first], 0, () => {
+    cards.forEach((c, i) => { if (i !== first) flipCard(c, 200 + Math.abs(i - first) * 120); });
+  });
+  const oppName = s.names[2 - duel.me] || 'соперник';
+  let msg;
+  if (r.winner === duel.me) {
+    msg = r.correct ? `Ты угадал! +${r.gain}` : `Не нашёл! +${r.gain} тебе`;
+  } else {
+    msg = r.correct ? `${oppName} угадал! +${r.gain} ему` : `Мимо! +${r.gain} сопернику`;
+  }
+  setTimeout(() => {
+    gainTextEl.textContent = msg;
+    gainTextEl.classList.add('shown');
+  }, 600);
+}
+
+function duelFinal(s) {
+  if (duelPoll) { clearInterval(duelPoll); duelPoll = null; }
+  stopFireworks();
+  const me = duel.me, opp = 3 - me;
+  const iWon = s.winner === me;
+  document.getElementById('finalTitle').textContent =
+    s.winner === 0 ? 'Ничья!' : iWon ? 'Победа!' : 'Поражение…';
+  finalScoreEl.textContent = `${s.scores[me - 1]} : ${s.scores[opp - 1]}`;
+  finalNoteEl.textContent =
+    s.winner === 0 ? `Вы с ${s.names[opp - 1]} стоите друг друга`
+      : iWon ? `${s.names[opp - 1]} — официально лох!`
+        : `${s.names[opp - 1]} оказался хитрее. Лох — ты.`;
+  challengeBtn.hidden = true;
+  document.getElementById('restart').textContent = 'В меню';
+  if (iWon) startFireworks();
+  finalScreen.classList.add('shown');
+}
+
+document.getElementById('duelBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  duelCreate();
+});
+
+// ---------- вход в игру и параметры ссылки ----------
+
+const startScreen = document.getElementById('startScreen');
+document.getElementById('startBtn').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (pendingDuelId) { duelJoin(pendingDuelId); return; }
+  if (challengeCtx && !myName) {
+    const n = await askName('Как тебя зовут?');
+    if (!n) return;
+    myName = n;
+  }
   started = true;
   startScreen.classList.add('hidden');
+  startRun();
 });
+
+{
+  const params = new URLSearchParams(location.search);
+  const c = params.get('c');
+  const d = params.get('d');
+  if (d) {
+    pendingDuelId = d;
+    modeHint.textContent = 'Тебя вызвали на дуэль!';
+    document.getElementById('startBtn').textContent = 'Принять дуэль';
+  } else if (c) {
+    api(`/api/challenge/${c}`).then((info) => {
+      if (info.status === 'done') {
+        modeHint.textContent =
+          `${info.from_name} (${info.from_score}) против ${info.to_name} (${info.to_score}) — вызов сыгран`;
+      } else {
+        challengeCtx = { id: c, fromName: info.from_name, fromScore: info.from_score };
+        modeHint.textContent = `${info.from_name} набрал ${info.from_score} — перебей!`;
+      }
+    }).catch(() => { modeHint.textContent = 'Вызов не найден'; });
+  }
+}
 
 // ---------- ввод ----------
 

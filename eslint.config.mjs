@@ -16,6 +16,9 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         Float32Array: 'readonly',
+        navigator: 'readonly',
+        location: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     rules: {
@@ -27,7 +30,9 @@ export default [
       'no-unreachable': 'error',
       'no-constant-condition': 'error',
       'no-self-assign': 'error',
-      'no-use-before-define': ['error', { functions: false }],
+      // обработчики событий зовутся после инициализации модуля — лексический
+      // порядок объявлений let/const в них не важен
+      'no-use-before-define': ['error', { functions: false, variables: false }],
       'no-var': 'error',
       'prefer-const': 'error',
     },
