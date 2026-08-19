@@ -384,6 +384,7 @@ const lbHint = document.getElementById('lbHint');
 
 let googleToken = null;
 let pendingScore = 0;
+let lastSubmit = Promise.resolve(); // последняя отправка счёта — рейтинг ждёт её
 
 function initGoogle() {
   const id = window.GAME_CONFIG && window.GAME_CONFIG.googleClientId;
@@ -422,21 +423,30 @@ function initGoogle() {
   }, 200);
 }
 
-async function submitScore(s) {
-  if (!googleToken) { pendingScore = Math.max(pendingScore, s); return; }
-  try {
-    await fetch('/api/score', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: googleToken, score: s }),
-    });
-    pendingScore = 0;
-  } catch (e) { /* рейтинг недоступен — не мешаем игре */ }
+function submitScore(s) {
+  if (!googleToken) { pendingScore = Math.max(pendingScore, s); return Promise.resolve(); }
+  lastSubmit = (async () => {
+    try {
+      await fetch('/api/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: googleToken, score: s }),
+      });
+      pendingScore = 0;
+    } catch (e) { /* рейтинг недоступен — не мешаем игре */ }
+  })();
+  return lastSubmit;
 }
 
 function renderLeaderboard(list) {
+  const img = lbWrap.querySelector('img');
+  if (!img.complete || !img.clientHeight) {
+    // пергамент ещё не загрузился — размер строк вычислить нельзя, перерисуем после загрузки
+    img.addEventListener('load', () => renderLeaderboard(list), { once: true });
+    return;
+  }
   lbRowsEl.innerHTML = '';
-  const fs = lbWrap.querySelector('img').clientHeight * .04;
+  const fs = img.clientHeight * .04;
   LB_ROW_CENTERS.forEach((c, i) => {
     const row = document.createElement('div');
     row.className = 'lbRow';
@@ -457,9 +467,10 @@ async function refreshLeaderboard() {
   renderLeaderboard(list);
 }
 
-function openLeaderboard(e) {
+async function openLeaderboard(e) {
   e.stopPropagation();
   lbScreen.classList.add('shown');
+  await lastSubmit; // счёт мог быть ещё в полёте — иначе первый клик покажет пустую таблицу
   refreshLeaderboard();
 }
 
