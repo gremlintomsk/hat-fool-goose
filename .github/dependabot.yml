@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # базовый образ nginx в Dockerfile
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  # экшены в workflow
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

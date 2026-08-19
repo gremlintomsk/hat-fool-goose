@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-js:
+    name: ESLint (main.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx --yes eslint@9 main.js config.js.example
+
+  lint-py:
+    name: Ruff (api.py)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+        with:
+          args: check api.py
+
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # config.js не хранится в git — для сборки образа достаточно примера
+      - run: cp config.js.example config.js
+      - run: docker build -t shlyapa-loh-gus .
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8080:80 shlyapa-loh-gus
+          sleep 3
+          curl -sf http://localhost:8080/ | grep -q "Шляпа"
+          curl -sf http://localhost:8080/api/leaderboard
+          docker rm -f smoke

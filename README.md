@@ -1,5 +1,7 @@
 # Шляпа? Лох? или Гусь?
 
+[![CI](https://github.com/gremlintomsk/hat-fool-goose/actions/workflows/ci.yml/badge.svg)](https://github.com/gremlintomsk/hat-fool-goose/actions/workflows/ci.yml)
+
 ![Шляпа? Лох? или Гусь?](img/intro.png)
 
 Мини-игра на Three.js в стиле Hearthstone: три карты рубашкой вверх,
