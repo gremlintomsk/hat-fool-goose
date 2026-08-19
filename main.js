@@ -133,7 +133,8 @@ for (let i = 0; i < 3; i++) {
 
   const glow = new THREE.Mesh(
     new THREE.PlaneGeometry(CARD_W * 1.7, CARD_H * 1.5),
-    new THREE.MeshBasicMaterial({ map: glowTexture, transparent: true, opacity: 0, depthWrite: false })
+    // depthTest: false — иначе стол обрезает нижнюю часть ореола
+    new THREE.MeshBasicMaterial({ map: glowTexture, transparent: true, opacity: 0, depthWrite: false, depthTest: false })
   );
   glow.position.set(x, BASE_Y, -.2);
   scene.add(glow, group);
@@ -232,6 +233,7 @@ function stopFireworks() {
 
 // ---------- игра ----------
 
+const questionEl = document.getElementById('question');
 const questionTarget = document.getElementById('target');
 const overlay = document.getElementById('overlay');
 const winText = document.getElementById('winText');
@@ -280,6 +282,9 @@ function newRound() {
   const order = shuffle([...CHARACTERS]);
   target = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
   questionTarget.textContent = target.name;
+  questionEl.classList.remove('pop');
+  void questionEl.offsetWidth; // перезапуск анимации
+  questionEl.classList.add('pop');
   cards.forEach((card, i) => {
     card.character = order[i];
     card.front.material.map = frontTextures.get(order[i].id);
@@ -324,6 +329,9 @@ function finish(win) {
     score += gain;
     gainTextEl.textContent = streak >= 2 ? `+${gain} очков (серия ×${streak})` : `+${gain} очков`;
     gainTextEl.classList.add('shown');
+    scoreEl.classList.remove('bump');
+    void scoreEl.offsetWidth;
+    scoreEl.classList.add('bump');
     winText.classList.add('shown');
     overlay.className = 'win shown';
     startFireworks();
@@ -337,7 +345,15 @@ function finish(win) {
 
 function showFinal() {
   stopFireworks();
-  finalScoreEl.textContent = `${score} очков`;
+  // накрутка счёта от 0 до итога
+  const finalValue = score;
+  const t0 = performance.now();
+  const dur = 1100;
+  (function countUp(now) {
+    const k = Math.min(1, (now - t0) / dur);
+    finalScoreEl.textContent = `${Math.round(finalValue * easeOutCubic(k))} очков`;
+    if (k < 1) requestAnimationFrame(countUp);
+  })(t0);
   const maxScore = BASE_POINTS * (MAX_ATTEMPTS * (MAX_ATTEMPTS + 1)) / 2;
   finalNoteEl.textContent = score >= maxScore / 2 ? 'Ты не лох, ты молодец!' : score > 0 ? 'Могло быть и хуже' : 'Ты АБСОЛЮТНЫЙ ЛЛЛЛОХХ!';
   finalScreen.classList.add('shown');
