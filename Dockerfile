@@ -1,4 +1,4 @@
-FROM nginx:1.27.0-alpine
+FROM nginx:1.31.3-alpine
 
 RUN apk add --no-cache python3
 
