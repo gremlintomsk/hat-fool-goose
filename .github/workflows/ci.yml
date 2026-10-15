@@ -10,7 +10,7 @@ jobs:
     name: ESLint (main.js)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -20,7 +20,7 @@ jobs:
     name: Ruff (api.py)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/ruff-action@v3
         with:
           args: check api.py
@@ -29,7 +29,7 @@ jobs:
     name: Docker image builds
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # config.js не хранится в git — для сборки образа достаточно примера
       - run: cp config.js.example config.js
       - run: docker build -t shlyapa-loh-gus .
